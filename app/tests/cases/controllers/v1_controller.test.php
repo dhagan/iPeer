@@ -446,7 +446,7 @@ class V1ControllerTest extends CakeTestCase {
         $this->assertEqual(substr($ret->debugInfo['headers_recv'], 0, 22), 'HTTP/1.1 404 Not Found');
     }
 
-    public function testGroupMembers()
+    public function testGroupMembersGet()
     {
         $url = $this->_getURL('v1/groups/1/users');
 
@@ -460,37 +460,68 @@ class V1ControllerTest extends CakeTestCase {
 
         $actualGroup = $this->_oauthReq("$url");
         $this->assertEqual(json_decode($actualGroup, true), $expectedGroup);
+    }
 
-        // HTTP POST, try to assign students to a group
+    public function testGroupMembersGetNonExistingGroup()
+    {
+        $url = $this->_getURL('v1/groups/999/users');
+
+        // HTTP GET, get a list of group members
+        $expectedGroup = array(
+        );
+
+        $actualGroup = $this->_oauthReq("$url");
+        $this->assertEqual(json_decode($actualGroup, true), $expectedGroup);
+    }
+
+    public function testGroupMembersPost()
+    {
+        $url = $this->_getURL('v1/groups/1/users');
+
+        // HTTP POST, try to assign students to a group, it should remove the old member as it is a POST request
         $toBeAdded = array(
             array('username' => 'redshirt0004'),
             array('username' => 'redshirt0005'),
             array('username' => 'redshirt0006'));
-        $addedMembers = $this->_oauthReq($url, json_encode($toBeAdded), OAUTH_HTTP_METHOD_POST);
+        $this->_oauthReq($url, json_encode($toBeAdded), OAUTH_HTTP_METHOD_POST);
 
-        $this->assertEqual(json_decode($addedMembers, true), $toBeAdded);
+        $actualGroup = $this->_oauthReq($url);
+        // the current group should only contain new members
+        $groupMembers = json_decode($actualGroup, true);
+        $this->assertEqual(count($groupMembers), 3);
+        $this->assertEqual(Set::extract('/username', $toBeAdded), Set::extract('/username', $groupMembers));
+    }
+
+    public function testGroupMembersAddingNonExistingUser()
+    {
+        $url = $this->_getURL('v1/groups/1/users');
 
         // test adding non existing user to a group
         $toBeAdded = array(
+            array('username' => 'redshirt0001'),
+            array('username' => 'redshirt0002'),
             array('username' => 'nonexistinguser'),
+            array('username' => 'redshirt0003'),
+            array('username' => 'redshirt0004'),
+            array('username' => 'tutor1'),
         );
-        $addedMembers = $this->_oauthReq($url, json_encode($toBeAdded), OAUTH_HTTP_METHOD_POST);
+        $this->_oauthReq($url, json_encode($toBeAdded), OAUTH_HTTP_METHOD_POST);
 
-        $this->assertEqual(json_decode($addedMembers, true), array());
         // make user nothing is added
         $actualGroup = $this->_oauthReq("$url");
-        $this->assertEqual(count(json_decode($actualGroup, true)), 7);
+        $this->assertEqual(count(json_decode($actualGroup, true)), 5);
+    }
+
+    public function testGroupMembersDelete()
+    {
+        $url = $this->_getURL('v1/groups/1/users');
 
         // HTTP DELETE, try to remove students from a group
         $ret = $this->_oauthReq("$url/redshirt0004",null,OAUTH_HTTP_METHOD_DELETE);
         $this->assertEqual(json_decode($ret, true), array());
-        $ret = $this->_oauthReq("$url/redshirt0005",null,OAUTH_HTTP_METHOD_DELETE);
-        $this->assertEqual(json_decode($ret, true), array());
-        $ret = $this->_oauthReq("$url/redshirt0006",null,OAUTH_HTTP_METHOD_DELETE);
-        $this->assertEqual(json_decode($ret, true), array());
         // confirm that the group is back to what it was before
-        $ret = $this->_oauthReq("$url");
-        $this->assertEqual(json_decode($ret, true), $expectedGroup);
+        $ret = $this->_oauthReq($url);
+        $this->assertEqual(count(json_decode($ret, true)), 4);
     }
 
     public function testEvents()

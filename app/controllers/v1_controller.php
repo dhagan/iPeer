@@ -612,7 +612,15 @@ class V1Controller extends Controller {
         $groupId = $this->params['group_id'];
         $username = $this->params['username'];
 
-        if ($this->RequestHandler->isGet()) {
+        $group = $this->Group->find('first', array(
+            'conditions' => array('Group.id' => $groupId),
+        ));
+
+        if (!$group) {
+            // invalid group id
+            $statusCode = 'HTTP/1.1 404 Not Found';
+            $groupMembers = array();
+        } else if ($this->RequestHandler->isGet()) {
             // retrieve a list of users in the given group
             $users = $this->User->getMembersByGroupId($groupId);
             foreach ($users as $user) {
@@ -631,25 +639,16 @@ class V1Controller extends Controller {
             $ret = $this->body;
             $users = json_decode($ret, true);
             $status = 'HTTP/1.1 200 OK';
-            foreach ($users as $user) {
-                $userId = $this->User->field('id',
-                    array('username' => $user['username']));
-                // skip the non-existing users
-                if (!$userId) {
-                    continue;
-                }
-                $tmp = array('group_id' => $groupId, 'user_id' => $userId);
-                // try to add this user to group
-                $this->GroupsMembers->create();
-                if ($this->GroupsMembers->save($tmp)) {
-                    $userId = $this->GroupsMembers->read('user_id');
-                    $this->GroupsMembers->id = null;
-                    $groupMembers[] = $user;
-                } else {
-                    $status = 'HTTP/1.1 500 Internal Server Error';
-                    break;
-                }
-            }
+
+            // delete the existing members
+            $this->Group->habtmDeleteAll('Member', $groupId);
+
+            // get user ids by username, this also excludes the non-existing users
+            $users = $this->User->getByUsernames(Set::extract('/username', $users));
+            $userIds = Set::extract('/User/id', $users);
+
+            // add to group
+            $this->Group->habtmAdd('Member', $groupId, $userIds);
         } else if ($this->RequestHandler->isDelete()) {
             // delete a user from the given group
             $userId = $this->User->field('id', array('username' => $username));
